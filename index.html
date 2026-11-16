@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f2f2f7">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Sensei">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>Sensei Notes</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header id="head">
+  <div class="badge" id="badge"></div>
+  <h1 id="hTitle"></h1>
+  <input id="q" type="search" placeholder="Ara…" enterkeyhint="search" autocomplete="off">
+</header>
+<main id="main"></main>
+<button id="fab" data-act="new" aria-label="Yeni kayıt">＋</button>
+<nav id="nav">
+  <button data-tab="daily"><i>📅</i>Günlük</button>
+  <button data-tab="book"><i>📚</i>Kitap</button>
+  <button data-tab="movie"><i>🎬</i>Film</button>
+  <button data-tab="place"><i>🧭</i>Yer</button>
+  <button data-tab="settings"><i>⚙️</i>Ayar</button>
+</nav>
+<div id="sheet" hidden></div>
+<script src="db.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
