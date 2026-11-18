@@ -231,3 +231,7 @@ setInterval(checkDay, 60000);
 applyTheme(); load();
 navigator.storage?.persist?.();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(console.error);
+
+// Zoom'u engelle: iOS'ta iki parmakla yakınlaştırma ve çift dokunma zoom'u
+['gesturestart','gesturechange','gestureend'].forEach(ev => document.addEventListener(ev, e => e.preventDefault()));
+document.addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault(); }, {passive:false});
