@@ -26,14 +26,9 @@ const TYPE_LABEL = {daily:'Günlük', book:'Kitap', movie:'Film', place:'Yer'};
 
 // ---------- Durum ----------
 const today = () => ymd(new Date());
-const S = {tab:'daily', date:today(), follow:true, cat:'work', filter:'all', q:'', scope:'all', fav:false, desc:true, items:[]};
-const theme = () => localStorage.getItem('theme') || 'auto';
+const S = {tab:'daily', date:today(), follow:true, cat:'work', filter:'all', q:'', scope:'all', fav:false, desc:true, compose:null, items:[]};
 
-function applyTheme() {
-  const t = theme(), dark = t === 'dark' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
-  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-  document.querySelector('meta[name=theme-color]').content = dark ? '#000000' : '#f2f2f7';
-}
+function applyTheme() { document.documentElement.dataset.theme = 'dark'; }
 
 async function load() { S.items = await DB.all(); render(); }
 
@@ -80,7 +75,7 @@ function dailyHTML() {
     <div class="d">${dLong(S.date)}<small>${dDay(S.date)}</small><input type="date" id="dp" value="${S.date}"></div>
     <button data-act="next">›</button></div>
     ${isToday ? '' : '<div class="row"><button class="tool" data-act="today">Bugüne dön</button></div>'}
-    <div class="chips">${chips}</div>${toolbar(list.length)}
+    <div class="chips">${chips}</div>${composerDaily()}${toolbar(list.length)}
     ${list.length ? list.map(i => card(i)).join('') : empty('📝', 'Bu gün için bu kategoride kayıt yok.<br>＋ ile ilk notunu ekle.')}`;
 }
 function collHTML(t) {
@@ -90,7 +85,7 @@ function collHTML(t) {
   const chips = ['Tümü', ...C.status].map((s, k) => `<button class="chip ${S.filter == (k ? k-1 : 'all') ? 'on' : ''}" data-act="flt" data-id="${k ? k-1 : 'all'}">${s}</button>`).join('');
   const list = byDate(favFilter(all.filter(i => S.filter === 'all' || i.status == S.filter)));
   return `<div class="stats">${stats.map((n, k) => `<div class="stat"><b>${n}</b><span>${C.stats[k]}</span></div>`).join('')}</div>
-    <div class="chips" style="margin-top:10px">${chips}</div>${toolbar(list.length)}
+    <div class="chips" style="margin-top:10px">${chips}</div>${composerColl(t)}${toolbar(list.length)}
     ${list.length ? list.map(i => card(i)).join('') : empty(C.i, 'Burada henüz kayıt yok.<br>＋ ile ekleyebilirsin.')}`;
 }
 function searchHTML() {
@@ -103,9 +98,7 @@ function searchHTML() {
     ${list.length ? list.map(i => card(i, true)).join('') : empty('🔍', 'Sonuç bulunamadı.')}`;
 }
 function settingsHTML() {
-  const t = theme();
-  return `<div class="set"><h3>Görünüm</h3><div class="chips">${[['auto','Otomatik'],['light','Açık'],['dark','Koyu']].map(([k, n]) => `<button class="chip ${t === k ? 'on' : ''}" data-act="theme" data-id="${k}">${n}</button>`).join('')}</div></div>
-    <div class="set"><h3>Yedekleme</h3><div class="meta">${S.items.length} kayıt cihazında saklanıyor. Düzenli yedek almanı öneririm.</div>
+  return `<div class="set"><h3>Yedekleme</h3><div class="meta">${S.items.length} kayıt cihazında saklanıyor. Düzenli yedek almanı öneririm.</div>
     <button class="big" data-act="export">⬇️ JSON olarak dışa aktar</button>
     <button class="big" data-act="import">⬆️ JSON yedeği içe aktar</button>
     <input type="file" id="file" accept=".json,application/json" hidden></div>`;
@@ -117,17 +110,34 @@ function render() {
   $('#badge').textContent = S.tab === 'daily' ? '📅 Günlük alan' : coll ? '🗂️ Kalıcı koleksiyon' : '⚙️ Ayarlar';
   $('#hTitle').textContent = S.tab === 'daily' ? 'Bugün: ' + dLong(today()) : coll ? coll.n : 'Ayarlar';
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === S.tab));
-  $('#fab').hidden = S.tab === 'settings';
   $('#q').style.display = S.tab === 'settings' ? 'none' : '';
   $('#main').innerHTML = S.tab === 'settings' ? settingsHTML() : searching ? searchHTML() : S.tab === 'daily' ? dailyHTML() : collHTML(S.tab);
+  // Koleksiyonda yerinde ekleme formunu aç
+  if (S.compose && COLL[S.tab] && !searching) { const h = $('#inl'); h.innerHTML = formHTML(S.tab, null, true); bindForm(h.querySelector('form'), S.tab, null, true); }
 }
 
-// ---------- Form (ekle / düzenle) ----------
-let editing = null; // formda açık olan kayıt (silme için)
-function openForm(type, it) {
-  editing = it || null;
-  const isNew = !it, isD = type === 'daily', C = COLL[type];
-  let h = `<h2>${isNew ? 'Yeni' : 'Düzenle'}: ${isD ? 'günlük not' : C.n}</h2><form id="f">`;
+// ---------- Yerinde yazma (iPhone Notlar gibi) ----------
+const uid = () => crypto.randomUUID?.() || Date.now() + '-' + Math.random();
+const ADD = {book:'Yeni kitap ekle…', movie:'Yeni film ekle…', place:'Yeni yer ekle…'};
+// Günlük: her zaman açık yazı alanı, yazınca Kaydet çıkar, alandan çıkınca da otomatik kaydeder
+const composerDaily = () => `<div class="card comp"><div class="b"><textarea id="dq" rows="1" placeholder="Dokun ve yaz…"></textarea>
+  <div class="row" id="dact" hidden><button class="tool pri" data-act="dsave">Kaydet</button></div></div></div>`;
+// Koleksiyon: tek satırlık alana dokununca form yerinde açılır
+const composerColl = t => S.compose === t ? `<div class="card comp"><div class="b" id="inl"></div></div>` : `<button class="comp-btn" data-act="compose">${ADD[t]}</button>`;
+async function saveDaily() {
+  const t = $('#dq'); if (!t || !t.value.trim()) return;
+  const body = t.value.trim(), now = Date.now(); t.value = '';
+  await DB.put({id: uid(), type:'daily', date:S.date, cat:S.cat, title:'', body, fav:false, created:now, updated:now});
+  await load();
+}
+document.addEventListener('input', e => { if (e.target.id === 'dq') { const t = e.target; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; $('#dact').hidden = !t.value.trim(); } });
+document.addEventListener('focusout', e => { if (e.target.id === 'dq') saveDaily(); });
+
+// ---------- Form (düzenleme penceresi + koleksiyon ekleme) ----------
+let editing = null; // düzenlenen kayıt (silme için)
+function formHTML(type, it, inline) {
+  const isD = type === 'daily', C = COLL[type];
+  let h = '<form>';
   if (isD) {
     h += `<label>Tarih</label><input type="date" name="date" required value="${it?.date || S.date}">
       <label>Kategori</label><select name="cat">${CATS.map(c => `<option value="${c.id}" ${(it?.cat || S.cat) === c.id ? 'selected' : ''}>${c.n}</option>`).join('')}</select>
@@ -138,23 +148,29 @@ function openForm(type, it) {
       h += `<label>${l}${req ? ' *' : ''}</label>` + (t === 'area' ? `<textarea name="${k}">${esc(it?.[k])}</textarea>` : `<input name="${k}" type="${t}" ${req ? 'required' : ''} value="${esc(it?.[k])}">`);
     });
     h += `<label>Durum</label><select name="status">${C.status.map((s, k) => `<option value="${k}" ${(it?.status ?? 0) == k ? 'selected' : ''}>${s}</option>`).join('')}</select>`;
-    if (type === 'movie') h += `<div id="rt"><label>Kişisel puan (10 üzerinden)</label><select name="rating"><option value="">Puan yok</option>${[1,2,3,4,5,6,7,8,9,10].map(n => `<option ${it?.rating == n ? 'selected' : ''}>${n}</option>`).join('')}</select></div>`;
+    if (type === 'movie') h += `<div class="rt"><label>Kişisel puan (10 üzerinden)</label><select name="rating"><option value="">Puan yok</option>${[1,2,3,4,5,6,7,8,9,10].map(n => `<option ${it?.rating == n ? 'selected' : ''}>${n}</option>`).join('')}</select></div>`;
   }
-  h += `<div class="btns">${isNew ? '' : '<button type="button" class="del" data-act="del">Sil</button>'}<button type="button" data-act="close">Vazgeç</button><button class="pri">Kaydet</button></div></form>`;
-  $('#sheet').innerHTML = `<div class="panel">${h}</div>`; $('#sheet').hidden = false;
-  const f = $('#f'), sync = () => { if ($('#rt')) $('#rt').style.display = f.status.value == 1 ? '' : 'none'; };
+  return h + `<div class="btns">${it ? '<button type="button" class="del" data-act="del">Sil</button>' : ''}<button type="button" data-act="${inline ? 'cancel' : 'close'}">Vazgeç</button><button class="pri">Kaydet</button></div></form>`;
+}
+function bindForm(f, type, it, inline) {
+  const isD = type === 'daily', rt = f.querySelector('.rt');
+  const sync = () => { if (rt) rt.style.display = f.status.value == 1 ? '' : 'none'; };
   if (f.status) f.status.onchange = sync; sync();
   f.onsubmit = async e => {
     e.preventDefault();
     const v = Object.fromEntries(new FormData(f)), now = Date.now();
     if (isD && !v.title.trim() && !v.body.trim()) return alert('Başlık veya not yaz.');
-    const o = {...(it || {id: crypto.randomUUID?.() || String(now) + Math.random(), type, fav: false, created: now}), ...v, updated: now};
+    const o = {...(it || {id: uid(), type, fav: false, created: now}), ...v, updated: now};
     if (!isD) { o.status = +v.status; o.rating = o.status === 1 && v.rating ? +v.rating : null; }
     await DB.put(o);
     if (isD) { S.date = o.date; S.cat = o.cat; S.follow = o.date === today(); }
-    $('#sheet').hidden = true; await load();
+    S.compose = null; $('#sheet').hidden = true; await load();
   };
-  f.querySelector('input,textarea')?.focus?.();
+}
+function openForm(type, it) {
+  editing = it;
+  $('#sheet').innerHTML = `<div class="panel"><h2>Düzenle</h2>${formHTML(type, it, false)}</div>`;
+  $('#sheet').hidden = false; bindForm($('#sheet form'), type, it, false);
 }
 
 // ---------- Olaylar ----------
@@ -162,12 +178,14 @@ const find = id => S.items.find(i => i.id === id);
 const upd = async (it, ch) => { await DB.put({...it, ...ch, updated: Date.now()}); await load(); };
 document.addEventListener('click', async e => {
   const nb = e.target.closest('nav button');
-  if (nb) { S.tab = nb.dataset.tab; S.filter = 'all'; S.fav = false; S.scope = 'all'; $('#q').value = ''; S.q = ''; return render(); }
+  if (nb) { S.tab = nb.dataset.tab; S.filter = 'all'; S.fav = false; S.scope = 'all'; S.compose = null; $('#q').value = ''; S.q = ''; return render(); }
   const el = e.target.closest('[data-act]'); if (!el) return;
   const a = el.dataset.act, id = el.dataset.id, it = id && find(id);
   e.stopPropagation();
   const A = {
-    new: () => openForm(S.tab === 'daily' || S.tab === 'settings' ? 'daily' : S.tab),
+    compose: () => { S.compose = S.tab; render(); $('#inl input')?.focus(); },
+    cancel: () => { S.compose = null; render(); },
+    dsave: saveDaily,
     edit: () => openForm(it.type, it), close: () => $('#sheet').hidden = true,
     prev: () => { S.date = shift(S.date, -1); S.follow = false; render(); },
     next: () => { S.date = shift(S.date, 1); S.follow = S.date === today(); render(); },
@@ -177,7 +195,6 @@ document.addEventListener('click', async e => {
     fav: () => upd(it, {fav: !it.fav}),
     cycle: () => upd(it, {status: (it.status + 1) % COLL[it.type].status.length, rating: null}),
     del: async () => { if (editing && confirm('Bu kayıt kalıcı olarak silinsin mi?')) { await DB.del(editing.id); $('#sheet').hidden = true; await load(); } },
-    theme: () => { localStorage.setItem('theme', id); applyTheme(); render(); },
     export: exportJSON, import: () => $('#file').click()
   };
   A[a]?.();
@@ -211,7 +228,6 @@ async function importJSON(file) {
 function checkDay() { if (S.follow && S.date !== today()) { S.date = today(); render(); } else if (S.tab === 'daily') $('#hTitle').textContent = 'Bugün: ' + dLong(today()); }
 document.addEventListener('visibilitychange', () => !document.hidden && checkDay());
 setInterval(checkDay, 60000);
-matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyTheme);
 applyTheme(); load();
 navigator.storage?.persist?.();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(console.error);
